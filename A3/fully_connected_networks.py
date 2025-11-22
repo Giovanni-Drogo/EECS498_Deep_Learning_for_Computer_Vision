@@ -500,9 +500,23 @@ def create_solver_instance(data_dict, dtype, device):
     # TODO: Use a Solver instance to train a TwoLayerNet that   #
     # achieves at least 50% accuracy on the validation set.     #
     #############################################################
-    solver = None
-    # Replace "pass" statement with your code
-    solver = Solver(model, data_dict,
+    # Ensure all tensors in data_dict are on the same device and use the
+    # requested dtype. This prevents errors where model parameters live on
+    # CUDA but input data remains on CPU (or vice-versa) during matrix
+    # multiplications.
+    proc_data = {}
+    for k, v in data_dict.items():
+        if isinstance(v, torch.Tensor):
+            # Convert floating tensors to the model dtype and move to device
+            if v.is_floating_point():
+                proc_data[k] = v.to(device).type(dtype)
+            else:
+                # Keep integer/label tensors as integer type but move to device
+                proc_data[k] = v.to(device)
+        else:
+            proc_data[k] = v
+
+    solver = Solver(model, proc_data,
                     optim_config={
                         'learning_rate': 1e-3,
                     },
@@ -521,8 +535,8 @@ def get_three_layer_network_params():
     # TODO: Change weight_scale and learning_rate so your         #
     # model achieves 100% training accuracy within 20 epochs.     #
     ###############################################################
-    weight_scale = 1e-2   # Experiment with this!
-    learning_rate = 1e-4  # Experiment with this!
+    weight_scale = 1e-2   # Experiment with this! 
+    learning_rate = 1e-1  # Experiment with this!
     # Replace "pass" statement with your code
     
     ###############################################################
@@ -539,8 +553,8 @@ def get_five_layer_network_params():
     # TODO: Change weight_scale and learning_rate so your          #
     # model achieves 100% training accuracy within 20 epochs.      #
     ################################################################
-    learning_rate = 2e-3  # Experiment with this!
-    weight_scale = 1e-5   # Experiment with this!
+    learning_rate = 1e-2  # Experiment with this!
+    weight_scale = 1e-2   # Experiment with this!
     # Replace "pass" statement with your code
     
 
