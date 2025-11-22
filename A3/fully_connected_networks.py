@@ -39,7 +39,9 @@ class Linear(object):
         # You will need to reshape the input into rows.                      #
         ######################################################################
         # Replace "pass" statement with your code
-        pass
+        N = x.shape[0]
+        X_reshaped = x.reshape(N, -1)  # reshape input to (N, D)
+        out = X_reshaped.mm(w) + b  # (N, M) out = x · w + b
         ######################################################################
         #                        END OF YOUR CODE                            #
         ######################################################################
@@ -68,7 +70,20 @@ class Linear(object):
         # TODO: Implement the linear backward pass.      #
         ##################################################
         # Replace "pass" statement with your code
-        pass
+        N = x.shape[0]
+        X_reshaped = x.reshape(N, -1)  # (N, D) where D = d1 * ... * d_k
+        dx_reshaped = dout.mm(w.t())  # (N, D) dx = dout · ∂y/∂x = dout · w^T
+        dx = dx_reshaped.reshape(x.shape)  # reshape back to (N, d1, ..., d_k)
+        dw = X_reshaped.t().mm(dout)  # (D, M) dw = ∂L/∂w = (∂L/∂y) · (∂y/∂w) = x^T · dout
+        db = dout.sum(dim=0)  # (M,) db = ∂L/∂b = sum over all samples of dout
+        '''examination:前向：
+x: (N, D) × w: (D, M) + b: (M,) → y: (N, M)
+
+反向：
+dx: dout(N, M) × w^T(M, D) → (N, D) → reshape → (N, d1,...,dk)
+dw: x^T(D, N) × dout(N, M) → (D, M)
+db: dout(N, M) sum(dim=0) → (M,)'''
+        
         ##################################################
         #                END OF YOUR CODE                #
         ##################################################
@@ -95,7 +110,7 @@ class ReLU(object):
         # in-place operation.                             #
         ###################################################
         # Replace "pass" statement with your code
-        pass
+        out = torch.clamp(x, min=0) 
         ###################################################
         #                 END OF YOUR CODE                #
         ###################################################
@@ -120,7 +135,8 @@ class ReLU(object):
         # in-place operation.                               #
         #####################################################
         # Replace "pass" statement with your code
-        pass
+        dx = dout.clone() # make a copy of dout
+        dx[x <= 0] = 0 # zero out gradients where x was non-positive f'(x) = 1  if x > 0;f'(x)= 0  if x ≤ 0
         #####################################################
         #                  END OF YOUR CODE                 #
         #####################################################
@@ -202,7 +218,10 @@ class TwoLayerNet(object):
         # weights and biases using the keys 'W2' and 'b2'.                #
         ###################################################################
         # Replace "pass" statement with your code
-        pass
+        self.params['W1'] = weight_scale * torch.randn(input_dim, hidden_dim, dtype=dtype, device=device)
+        self.params['b1'] = torch.zeros(hidden_dim, dtype=dtype, device=device)
+        self.params['W2'] = weight_scale * torch.randn(hidden_dim, num_classes, dtype=dtype, device=device)
+        self.params['b2'] = torch.zeros(num_classes, dtype=dtype, device=device)
         ###############################################################
         #                            END OF YOUR CODE                 #
         ###############################################################
@@ -253,7 +272,9 @@ class TwoLayerNet(object):
         # scores variable.                                          #
         #############################################################
         # Replace "pass" statement with your code
-        pass
+        scores, cache1 = Linear_ReLU.forward(X, self.params['W1'], self.params['b1'])
+        scores, cache2 = Linear.forward(scores, self.params['W2'], self.params['b2'])
+
         ##############################################################
         #                     END OF YOUR CODE                       #
         ##############################################################
@@ -275,7 +296,17 @@ class TwoLayerNet(object):
         # regularization does not include a factor of 0.5.                #
         ###################################################################
         # Replace "pass" statement with your code
-        pass
+        data_loss, dscores = softmax_loss(scores, y)
+        reg_loss = self.reg * (torch.sum(self.params['W1']**2) + torch.sum(self.params['W2']**2)) # L2 regularization loss, no 0.5 factor
+        loss = data_loss + reg_loss
+        # Backward pass
+        dx2, dW2, db2 = Linear.backward(dscores, cache2)
+        dx1, dW1, db1 = Linear_ReLU.backward(dx2, cache1)
+        # Store gradients
+        grads['W2'] = dW2 + 2 * self.reg * self.params['W2'] # add reg gradient 总梯度 = 数据梯度 + 正则化梯度
+        grads['b2'] = db2 
+        grads['W1'] = dW1 + 2 * self.reg * self.params['W1']
+        grads['b1'] = db1
         ###################################################################
         #                     END OF YOUR CODE                            #
         ###################################################################
@@ -337,7 +368,10 @@ class FullyConnectedNet(object):
         # should be initialized to zero.                                      #
         #######################################################################
         # Replace "pass" statement with your code
-        pass
+        layer_dims = [input_dim] + hidden_dims + [num_classes]  # all layer dimensions
+        for i in range(self.num_layers):
+            self.params['W' + str(i + 1)] = weight_scale * torch.randn(layer_dims[i], layer_dims[i + 1], dtype=dtype, device=device)
+            self.params['b' + str(i + 1)] = torch.zeros(layer_dims[i + 1], dtype=dtype, device=device)
         #######################################################################
         #                         END OF YOUR CODE                            #
         #######################################################################
@@ -401,7 +435,19 @@ class FullyConnectedNet(object):
         # to each dropout forward pass.                                  #
         ##################################################################
         # Replace "pass" statement with your code
-        pass
+        out = X
+        caches = [] # store caches for each layer
+        dropout_caches = [] # store dropout caches
+        # Forward pass through L-1 layers with ReLU (and dropout if used)
+        for i in range(self.num_layers - 1):
+            out, cache = Linear_ReLU.forward(out, self.params['W' + str(i + 1)], self.params['b' + str(i + 1)])
+            caches.append(cache)
+            if self.use_dropout:
+                out, dropout_cache = Dropout.forward(out, self.dropout_param)
+                dropout_caches.append(dropout_cache)
+        # Final layer (no ReLU, no dropout)
+        scores, final_cache = Linear.forward(out, self.params['W' + str(self.num_layers)], self.params['b' + str(self.num_layers)])
+
         #################################################################
         #                      END OF YOUR CODE                         #
         #################################################################
@@ -423,7 +469,24 @@ class FullyConnectedNet(object):
         # the gradient.                                                     #
         #####################################################################
         # Replace "pass" statement with your code
-        pass
+        data_loss, dscores = softmax_loss(scores, y)
+        reg_loss = 0.0
+        for i in range(self.num_layers):
+            W = self.params['W' + str(i + 1)]
+            reg_loss += 0.5 * self.reg * torch.sum(W**2)  # L2 regularization loss with 0.5 factor
+        loss = data_loss + reg_loss
+        # Backward pass
+        dout, dW, db = Linear.backward(dscores, final_cache)
+        grads['W' + str(self.num_layers)] = dW + self.reg * self.params['W' + str(self.num_layers)]
+        grads['b' + str(self.num_layers)] = db
+        # Backward pass through L-1 layers
+        for i in reversed(range(self.num_layers - 1)):
+            if self.use_dropout:
+                dout = Dropout.backward(dout, dropout_caches[i])
+            # Backprop through Linear-ReLU layer
+            dout, dW, db = Linear_ReLU.backward(dout, caches[i])
+            grads['W' + str(i + 1)] = dW + self.reg * self.params['W' + str(i + 1)]
+            grads['b' + str(i + 1)] = db
         ###########################################################
         #                   END OF YOUR CODE                      #
         ###########################################################
@@ -439,7 +502,14 @@ def create_solver_instance(data_dict, dtype, device):
     #############################################################
     solver = None
     # Replace "pass" statement with your code
-    pass
+    solver = Solver(model, data_dict,
+                    optim_config={
+                        'learning_rate': 1e-3,
+                    },
+                    lr_decay=0.95,
+                    num_epochs=10,
+                    batch_size=100,
+                    print_every=100)
     ##############################################################
     #                    END OF YOUR CODE                        #
     ##############################################################
@@ -454,11 +524,14 @@ def get_three_layer_network_params():
     weight_scale = 1e-2   # Experiment with this!
     learning_rate = 1e-4  # Experiment with this!
     # Replace "pass" statement with your code
-    pass
-    ################################################################
-    #                             END OF YOUR CODE                 #
-    ################################################################
+    
+    ###############################################################
+    #                       END OF YOUR CODE                       #
+    ###############################################################
     return weight_scale, learning_rate
+    
+
+    
 
 
 def get_five_layer_network_params():
@@ -469,7 +542,9 @@ def get_five_layer_network_params():
     learning_rate = 2e-3  # Experiment with this!
     weight_scale = 1e-5   # Experiment with this!
     # Replace "pass" statement with your code
-    pass
+    
+
+
     ################################################################
     #                       END OF YOUR CODE                       #
     ################################################################
@@ -513,7 +588,11 @@ def sgd_momentum(w, dw, config=None):
     # update the velocity v.                                         #
     ##################################################################
     # Replace "pass" statement with your code
-    pass
+    mu = config['momentum']
+    learning_rate = config['learning_rate']
+    v = mu * v - learning_rate * dw  # update velocity # v = mu * v + (- learning_rate * dw)
+    next_w = w + v  # update weights # w = w + v
+    
     ###################################################################
     #                           END OF YOUR CODE                      #
     ###################################################################
@@ -547,7 +626,14 @@ def rmsprop(w, dw, config=None):
     # config['cache'].                                                        #
     ###########################################################################
     # Replace "pass" statement with your code
-    pass
+    decay_rate = config['decay_rate']
+    learning_rate = config['learning_rate']
+    epsilon = config['epsilon']
+    cache = config['cache']
+    cache = decay_rate * cache + (1 - decay_rate) * (dw ** 2)  # update cache
+    next_w = w - learning_rate * dw / (torch.sqrt(cache) + epsilon)  # update weights
+    config['cache'] = cache
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -588,7 +674,22 @@ def adam(w, dw, config=None):
     # using it in any calculations.                                          #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+    beta1 = config['beta1']
+    beta2 = config['beta2']
+    learning_rate = config['learning_rate']
+    epsilon = config['epsilon']
+    m = config['m']
+    v = config['v']
+    t = config['t'] + 1  # increment time step  
+    m = beta1 * m + (1 - beta1) * dw  # update biased first moment estimate
+    v = beta2 * v + (1 - beta2) * (dw ** 2)  # update biased second moment estimate
+    m_hat = m / (1 - beta1 ** t)  # compute bias-corrected first moment estimate
+    v_hat = v / (1 - beta2 ** t)  # compute bias-corrected second moment estimate
+    next_w = w - learning_rate * m_hat / (torch.sqrt(v_hat) + epsilon)  # update weights
+    config['m'] = m
+    config['v'] = v
+    config['t'] = t
+
     #########################################################################
     #                              END OF YOUR CODE                         #
     #########################################################################
@@ -641,7 +742,9 @@ class Dropout(object):
             # Store the dropout mask in the mask variable.               #
             ##############################################################
             # Replace "pass" statement with your code
-            pass
+            mask = (torch.rand_like(x) > p).float() / (1 - p)
+            out = x * mask
+
             ##############################################################
             #                   END OF YOUR CODE                         #
             ##############################################################
@@ -651,7 +754,7 @@ class Dropout(object):
             # inverted dropout.                                          #
             ##############################################################
             # Replace "pass" statement with your code
-            pass
+            out = x
             ##############################################################
             #                      END OF YOUR CODE                      #
             ##############################################################
@@ -678,7 +781,7 @@ class Dropout(object):
             # inverted dropout                                        #
             ###########################################################
             # Replace "pass" statement with your code
-            pass
+            dx = dout * mask
             ###########################################################
             #                     END OF YOUR CODE                    #
             ###########################################################
